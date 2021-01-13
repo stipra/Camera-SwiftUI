@@ -80,29 +80,88 @@ extension PhotoCaptureProcessor: AVCapturePhotoCaptureDelegate {
     
     fileprivate func saveToPhotoLibrary(_ photoData: Data) {
         //        MARK: Saves capture to photo library
+        var readWriteStatus:PHAuthorizationStatus
         
-        PHPhotoLibrary.requestAuthorization { status in
-            if status == .authorized {
-                PHPhotoLibrary.shared().performChanges({
-                    let options = PHAssetResourceCreationOptions()
-                    let creationRequest = PHAssetCreationRequest.forAsset()
-                    options.uniformTypeIdentifier = self.requestedPhotoSettings.processedFileType.map { $0.rawValue }
-                    creationRequest.addResource(with: .photo, data: photoData, options: options)
-                    
-                    
-                }, completionHandler: { _, error in
-                    if let error = error {
-                        print("Error occurred while saving photo to photo library: \(error)")
+        // Check the app's authorization status (either read/write or add-only access).
+        if #available(iOS 14, *) {
+            readWriteStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        } else {
+            readWriteStatus = PHPhotoLibrary.authorizationStatus(); // Fallback on earlier versions
+        };
+        
+        /*
+        PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+            switch status {
+            case .notDetermined:
+                // The user hasn't determined this app's access.
+            case .restricted:
+                // The system restricted this app's access.
+            case .denied:
+                // The user explicitly denied this app's access.
+            case .authorized:
+                // The user authorized this app to access Photos data.
+            case .limited:
+                // The user authorized this app for limited Photos access.
+            @unknown default:
+                fatalError()
+            }
+        }
+        */
+        
+        if(readWriteStatus == PHAuthorizationStatus.authorized)
+        {
+            // We have access to the library
+            PHPhotoLibrary.shared().performChanges({
+                let options = PHAssetResourceCreationOptions()
+                let creationRequest = PHAssetCreationRequest.forAsset()
+                options.uniformTypeIdentifier = self.requestedPhotoSettings.processedFileType.map { $0.rawValue }
+                creationRequest.addResource(with: .photo, data: photoData, options: options)
+                
+                
+            }, completionHandler: { _, error in
+                if let error = error
+                {
+                    print("Error occurred while saving photo to photo library: \(error)")
+                }
+                
+                DispatchQueue.main.async
+                {
+                    self.completionHandler(self)
+                }
+            }
+            )
+        }
+        else
+        {
+            PHPhotoLibrary.requestAuthorization { status in
+                if (status == .authorized)
+                {
+                    PHPhotoLibrary.shared().performChanges({
+                        let options = PHAssetResourceCreationOptions()
+                        let creationRequest = PHAssetCreationRequest.forAsset()
+                        options.uniformTypeIdentifier = self.requestedPhotoSettings.processedFileType.map { $0.rawValue }
+                        creationRequest.addResource(with: .photo, data: photoData, options: options)
+                        
+                        
+                    }, completionHandler: { _, error in
+                        if let error = error
+                        {
+                            print("Error occurred while saving photo to photo library: \(error)")
+                        }
+                        
+                        DispatchQueue.main.async
+                        {
+                            self.completionHandler(self)
+                        }
                     }
-                    
-                    DispatchQueue.main.async {
+                    )
+                }
+                else
+                {
+                    DispatchQueue.main.async
+                    {
                         self.completionHandler(self)
                     }
-                }
-                )
-            } else {
-                DispatchQueue.main.async {
-                    self.completionHandler(self)
                 }
             }
         }
@@ -123,6 +182,6 @@ extension PhotoCaptureProcessor: AVCapturePhotoCaptureDelegate {
         }
            
         // Now saves photo after service has captured, ready for sending to process
-        self.saveToPhotoLibrary(photoData)
+        self.saveToPhotoLibrary(photoData!)
     }
 }
